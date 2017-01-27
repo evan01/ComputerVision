@@ -1,0 +1,9 @@
+# Created by .ignore support plugin (hsz.mobi)
+.gitignore
+.idea/
+Assignment1/Logging.html
+Logging.html
+images/
+lib/__init__.pyc
+lib/__pycache__/
+lib/pictureLogger.pyc
