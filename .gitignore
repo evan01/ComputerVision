@@ -2,8 +2,8 @@
 .gitignore
 .idea/
 Assignment1/Logging.html
-Logging.html
-images/
+Assignment1/Logging.html
+Assignment1/images/
 lib/__init__.pyc
 lib/__pycache__/
 lib/pictureLogger.pyc
