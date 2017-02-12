@@ -5,17 +5,22 @@ import cv2 as cv2
 import matplotlib.pyplot as plt
 from pictureLogger import imageLogger
 import numpy as np
+import warnings
+
+warnings.filterwarnings("ignore")
 
 il = imageLogger()
 from tqdm import tqdm as tqdm
 
 DEBUG = True  # Smaller image and more logging
+WINDOW_SIZE = 10
 
 
 def resizeImage(image, dbug=DEBUG):
     if dbug:
-        # image = cv2.resize(image, (480, 640))
-        image = cv2.resize(image, (120, 160))
+        image = cv2.resize(image, (480, 640))
+        # image = cv2.resize(image, (120, 160))
+        # image = cv2.resize(image, (1920, 2560))
     else:
         image = cv2.resize(image, (1920, 2560))
     return image
@@ -42,60 +47,18 @@ def convolvePointsWith3Kernel(points, kernel):
     return int(newValue)
 
 
-def getPointsWith3Kernel(x, y, imP):
-    '''
-    A function that given an x,y coordinate of an image, will return the 9points around that point (point inclusive).
-    We can assume a zero padded image.
-    :return: The 9 points around the point e of an image, including the point passed in
-    [a,b,c]
-    [d,e,f]
-    [g,h,i] ----> [a,b,c,d,e,f,g,h,i]
-
-    '''
-
-    points = []
-    for i in range(x - 1, x + 2):
-        row = []
-        for j in range(y - 1, y + 2):
-            row.append(imP[i][j])
-        points.append(row)
-    return np.array(points, dtype=np.float32)
-
-
-def convolutionFunction(image, kernel):
-    print "Convolving the image with specified kernel...\n" + str(kernel)
-    im = image.copy()
-    newIm = image.copy()
-    # First zero pad the image
-    im = np.pad(im, 1, "constant")
-
-    # Then convolude the image
-    shape = im.shape
-    xlen = shape[1]
-    ylen = shape[0]
-
-    # Loop through the whole image
-    for i in tqdm(range(1, ylen - 1), desc="Convolution function"):
-        for j in range(1, xlen - 1):
-            # Get the points immediately surrounding the point of interest in original image
-            points = getPointsWith3Kernel(i, j, im)
-            newIm[i - 1][j - 1] = convolvePointsWith3Kernel(points, kernel)
-
-    return newIm
-
-
 def edgeMaximaSuppression(corn, windowSize):
-    '''
+    """
     This function takes an image, and only returns the local maximums of each pixel.
     Basically removes all of the 'not so hot corners'
     Taken from this algorithm below.
     http://stackoverflow.com/questions/29057159/non-local-maxima-suppression-in-python
     :param corn: Image with bad corners
     :return: Image without all the noise
-    '''
+    """
     dx, dy = windowSize, windowSize
     length, width = corn.shape[0], corn.shape[1]
-    for x in range(length - dx + 1):
+    for x in tqdm(range(length - dx + 1), desc="Edge Maxima Suppression"):
         for y in range(0, width - dy + 1):
             '''
             The idea is to create a window and move it along the entire image
@@ -109,6 +72,9 @@ def edgeMaximaSuppression(corn, windowSize):
             else:
                 lmax = np.amax(wind)  # Gets the maximum value along the window
             maxPosition = np.argmax(wind)  # The the x,y value that has this maximum value
+            wind[:] = 0  # MAke all values in the window 0
+            wind.flat[maxPosition] = lmax  # Places the maximum value in the correct place
+    return corn
 
 
 def cornerness(Sx2, Sy2, Sxy):
@@ -121,9 +87,9 @@ def cornerness(Sx2, Sy2, Sxy):
     :param filteredImage:
     :return:
     '''
-    A = 1
+    A = .05
     sz = Sx2.shape
-    corn = np.zeros(sz, dtype=np.uint8)
+    corn = np.zeros(sz, dtype=np.float32)
     # First iterate through every pixel in the different images
     for i in tqdm(range(sz[0]), desc="Cornerness Function"):
         for j in range(sz[1]):
@@ -138,15 +104,15 @@ def cornerness(Sx2, Sy2, Sxy):
     return corn
 
 
-def gaussian_filter(ix2, iy2, ixy):
-    '''
-    The 3x3 kernel was taken from http://dev.theomader.com/gaussian-kernel-calculator/
-    :param ix2:chro
-    :param iy2:
+def gaussian_filter2(ix2, iy2, ixy):
+    """
+    We need to apply a Gaussian filter to smooth out the original image somewhat
+    The old implementation was too slow
+    :param ix2: Padded X_squared derivative image
+    :param iy2:'' y_ysqured'' ...
     :param ixy:
-    :param image:
     :return:
-    '''
+    """
     kernel = [
         [1, 2, 1],
         [2, 4, 2],
@@ -154,12 +120,43 @@ def gaussian_filter(ix2, iy2, ixy):
     ]
     kernel = np.array(kernel, dtype=np.float32)
     kernel / 16
-
-    ix2 = convolutionFunction(ix2, kernel)
-    iy2 = convolutionFunction(iy2, kernel)
-    ixy = convolutionFunction(ixy, kernel)
+    ix2 = convolutionFunction2(ix2, kernel)
+    iy2 = convolutionFunction2(iy2, kernel)
+    ixy = convolutionFunction2(ixy, kernel)
 
     return ix2, iy2, ixy
+
+
+def convolutionFunction2(image, kernel):
+    '''
+    This function takes as input an image and then convolves it with the spec. kernel
+    :param image: The original black and white image
+    :param kernel: A 3x3 kernel
+    :return: The filtered image
+    '''
+    image = np.array(image, dtype=np.float32)
+
+    # Zero pad the image
+    image = np.pad(image, 1, "constant")
+
+    # FLIP THE KERNEL?? https://en.wikipedia.org/wiki/Kernel_(image_processing)
+    kernel = np.fliplr(kernel)
+
+    # Convert kernel to a 1x9 matrix
+    kernel = np.reshape(kernel, (1, 9))
+
+    # Then start convolving
+    sz = image.shape
+    newImg = np.zeros(sz, dtype=np.float32)
+    # print ("Convoluding image with specified kernel" + str(kernel))
+    for i in tqdm(range(1, sz[0] - 1), desc="Convolution function"):
+        for j in range(1, sz[1] - 1):
+            window = image[i - 1:i + 2, j - 1:j + 2]  # First get the points that make up our window
+            # Then convolve the kernel with these points
+            m1 = np.reshape(window, (1, 9))
+            newImg[i][j] = np.inner(kernel, m1)
+
+    return newImg
 
 
 def squareDervivatives(dx, dy):
@@ -185,30 +182,6 @@ def squareDervivatives(dx, dy):
     return ix2, iy2, ixy
 
 
-def computeImageDerivatives(im):
-    # todo optionally blue the image...
-    sx = [
-        [-1, 0, 1],
-        [-2, 0, 2],
-        [-1, 0, 1]
-    ]
-
-    sy = [
-        [-1, -2, -1],
-        [0, 0, 0],
-        [1, 2, 1]
-    ]
-    sx, sy = np.array(sx, np.uint8), np.array(sy, np.uint8)
-
-    sx, sy = sx, sy
-
-    # Get the results of the filter output of every pixel for each mask on image
-    im_x = convolutionFunction(im, sx)
-    im_y = convolutionFunction(im, sy)
-
-    return im_x, im_y
-
-
 def computeImageDerivatives2(im):
     '''
     Seems annoying to manually implement the np.gradient function but here goes
@@ -230,50 +203,78 @@ def computeImageDerivatives2(im):
     for i in tqdm(range(1, shp[0]), desc="Computing Image Derivatives"):
         for j in range(1, shp[1]):
             # Then compute the image derivatives
-            dx = .5 * (im[i + 1][j] - im[i - 1][j])
-            dy = .5 * (im[i][j + 1] - im[i][j - 1])
-            D_X[i - 1][j - 1] = dx
-            D_Y[i - 1][j - 1] = dy
-
+            try:
+                D_X[i - 1][j - 1] = .5 * (im[i + 1][j] - im[i - 1][j])
+                D_Y[i - 1][j - 1] = .5 * (im[i][j + 1] - im[i][j - 1])
+            except Exception:
+                D_X[i - 1][j - 1] = 0
+                D_Y[i - 1][j - 1] = 0
     # testx,texy = np.gradient(im) #So much easier than this :/
     return D_X, D_Y
 
 
-def harrisCorners(im):
-    # First log the original image
-    il.log(im, "greyscale before harris corners")
+def displayHarrisCorners(nonMCorn, image):
+    '''
+    This function takes as input an image and an 'image of corners' which we will color
+    and then overlay over the original image
+    :param corn: A 2D array, the same size of the image, where the values represent corners
+    :param image: A 2D array, that represents a standard greyscale image
+    :return:
+    '''
 
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    thresh = 200
+    sz = image.shape
+    l, w = sz[0], sz[1]
+    for i in range(l):
+        for j in range(w):
+            if nonMCorn[i][j] > thresh:
+                cv2.circle(image, (j, i), 3, (0, 0, 255), 3)
+    return image
+
+
+def harrisCorners(im):
     # Zero pad the image
     im = np.pad(im, 1, "constant")
-    il.log(im, "padded")
 
     # First compute the image derivatives
     dx, dy = computeImageDerivatives2(im)
-    il.log(dx, "x derivative")
-    il.log(dy, "y derivatives")
 
     # Then square the derivatives
     ix2, iy2, ixy = squareDervivatives(dx, dy)
-    il.log(ix2, "x squared")
-    il.log(iy2, "y squared")
-    il.log(ixy, "xy")
 
     # Then apply the gaussian filter
-    Gx2, Gy2, Gxy = gaussian_filter(ix2, iy2, ixy)
-    il.log(ix2, "x squared Gaussian")
-    il.log(iy2, "y squared Gaussian")
-    il.log(ixy, "xy Gaussian")
+    Gx2, Gy2, Gxy = gaussian_filter2(ix2, iy2, ixy)
 
     # Then the cornerness function
     corn = cornerness(Gx2, Gy2, Gxy)
 
     # Then non-maxima suppresion
-    edgeMaximaSuppression(corn)  # Perform the canny edge detector
+    nonMaxCorn = edgeMaximaSuppression(corn, WINDOW_SIZE)  # Perform the canny edge detector
 
+    # Then display the harris corners
+    finalImage = displayHarrisCorners(nonMaxCorn, im)
+
+    if DEBUG:
+        # First log the original image
+        il.log(im, "padded")
+        il.log(im, "greyscale before harris corners")
+        il.log(dx, "x derivative")
+        il.log(dy, "y derivatives")
+        il.log(ix2, "x squared")
+        il.log(iy2, "y squared")
+        il.log(ixy, "xy")
+        il.log(ix2, "x squared Gaussian")
+        il.log(iy2, "y squared Gaussian")
+        il.log(ixy, "xy Gaussian")
+        il.log(corn, "Corners Without supression")
+        il.log(nonMaxCorn, "Corners with supression")
+        il.log(finalImage, "Harris corners")
 
 def main():
     # First thing to do is import the image
-    image = cv2.imread(".//images/Rebecca1.jpg", 0)
+    image = cv2.imread("./images/Rebecca1.jpg", 0)
+    np.array(image, dtype=np.uint8)
 
     # then resize the image
     image = resizeImage(image)
