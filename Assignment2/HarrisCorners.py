@@ -270,8 +270,10 @@ def harrisCorners(im):
         il.log(corn, "Corners Without supression")
         il.log(nonMaxCorn, "Corners with supression")
         il.log(finalImage, "Harris corners")
+    return finalImage
 
-def main():
+
+def harrisCorns():
     # First thing to do is import the image
     image = cv2.imread("./images/Rebecca1.jpg", 0)
     np.array(image, dtype=np.uint8)
@@ -284,4 +286,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    harrisCorns()

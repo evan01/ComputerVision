@@ -20,14 +20,14 @@ class imageLogger():
         and then use the il.log(image,**args)
     '''
     def __init__(self):
-        url = "Logging.html"
+        url = "FacialComparison.html"
         self.url = url
         self.logger = logging.getLogger(url)
         if LOGGING_ON:
             self.logger.setLevel(logging.DEBUG)
         else:
             self.logger.setLevel(logging.INFO)
-        fh = FileHandler("Logging.html", mode="w")
+        fh = FileHandler("FacialComparison.html", mode="w")
         self.logger.addHandler(fh)
 
     def log(self, image, desc="no description", fmt="png", size=1600, title="Logging"):

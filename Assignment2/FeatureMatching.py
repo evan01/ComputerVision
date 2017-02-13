@@ -55,12 +55,12 @@ def match(im1, im2):
     print "Draw the matches"
     newIm = cv2.drawMatchesKnn(im1, kp1, im2, kp2, bMatches, None, flags=2)
     il.log(newIm, "matches")
-    # bestMatches = sorted(i,key=lambda x:x.distance)
+
 
     print ("done")
 
 
-def main():
+def featureMatch():
     # First thing to do is import the image
     im1 = cv2.imread("./images/Rebecca1.jpg", 0)
     np.array(im1, dtype=np.uint8)
@@ -77,4 +77,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    featureMatch()

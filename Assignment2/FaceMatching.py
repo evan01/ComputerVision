@@ -4,21 +4,34 @@ from pictureLogger import imageLogger
 import numpy as np
 import warnings
 import os
+from scipy.spatial.distance import cdist
+
 
 warnings.filterwarnings("ignore")
 
 il = imageLogger()
 from tqdm import tqdm as tqdm
 
-DEBUG = True
-
+DEBUG = False
+path = "./img_align_celeba"
+myImagePath = "./images/Evan.jpg"
 
 def importCelebImages():
     """
     This function will import all the images, and compute their descriptors
     :return: an array of image descriptors
     """
-    os
+
+    if DEBUG:
+        images = os.listdir(path)[:15]
+    else:
+        images = os.listdir(path)[:2000]
+    images_WithFeatures = []
+    for index, imageName in tqdm(zip(range(len(images)), images), desc="Processing celebrity images"):
+        im = cv2.resize(cv2.imread(path + "/" + imageName, 0), (128, 128))
+        features = [computeLBPDescriptor(i) for i in breakImageApart(im)]
+        images_WithFeatures.append((index, features))
+    return images_WithFeatures
 
 
 def resizeImage(image, dbug=DEBUG):
@@ -27,9 +40,8 @@ def resizeImage(image, dbug=DEBUG):
         # image = cv2.resize(image, (120, 160))
         # image = cv2.resize(image, (1920, 2560))
     else:
-        image = cv2.resize(image, (1920, 2560))
+        image = cv2.resize(image, (128, 128))
     return image
-
 
 def computeLBPDescriptor(im):
     # Zero pad the image
@@ -79,29 +91,46 @@ def breakImageApart(im):
 
     return segments
 
-def main():
+
+def compareFeatures(myPictureSummary, celebListSummary):
+    comparisons = []
+    myFeatures = np.array(myPictureSummary).flatten()
+    for index, celeb in tqdm(zip(range(len(celebListSummary)), celebListSummary), desc="Comparing Celebs..."):
+        sum = 0
+        celebFeatures = np.array(celeb[1]).flatten()
+        sum = ((myFeatures - celebFeatures) ** 2).sum()
+        comparisons.append((index, sum))
+
+    # Then find the closest celeb to me
+    closestCeleb = min(comparisons, key=lambda t: t[1])
+    return closestCeleb[0]
+
+
+def faceMatch():
     """
     This function will be a celebrity face matching exercise with my face
     :return: The celebrity I look the most like
     """
 
     # First thing is to import all the images, resize them, and compute their descriptors
-    images = importCelebImages()
+    imagesWithFeatures = importCelebImages()
 
     # Then get our image, resize it and compute it's descriptor
-    me_im = cv2.imread("./images/Rebecca1.jpg", 0)
+    me_im = cv2.imread(myImagePath, 0)
     me_im = resizeImage(me_im)
     imSegments = breakImageApart(me_im)
     me_features = [computeLBPDescriptor(i) for i in tqdm(imSegments, desc="Finding features")]
 
     # Then compare our fDescriptor with all the others! Will return index of image we want
-    im = compareFeatures(me_features, all_features)
-    print "done"
-    # lbp = computeLBPDescriptor(me_im)
+    celebIndex = compareFeatures(me_features, imagesWithFeatures)
+    images = os.listdir(path)
+    celeb = images[celebIndex]
+    celebrityImage = cv2.imread(path + "/" + celeb)
 
-
-    # Compute the lb feature descriptor
+    # Finally display both the celebrity image and my image
+    il.log(celebrityImage, "Celebrity image")
+    il.log(cv2.imread(myImagePath), "My Image")
 
 
 if __name__ == '__main__':
-    main()
+    faceMatch()
