@@ -1,11 +1,9 @@
 import cv2 as cv2
-import matplotlib.pyplot as plt
-from pictureLogger import imageLogger
 import numpy as np
-import warnings
 import os
-from scipy.spatial.distance import cdist
+import warnings
 
+from Assignment3.pictureLogger import imageLogger
 
 warnings.filterwarnings("ignore")
 
@@ -13,7 +11,7 @@ il = imageLogger()
 from tqdm import tqdm as tqdm
 
 DEBUG = False
-path = "./img_align_celeba"
+path = "./img_align_celeba/"
 myImagePath = "./images/Evan.jpg"
 
 def importCelebImages():
@@ -23,9 +21,9 @@ def importCelebImages():
     """
 
     if DEBUG:
-        images = os.listdir(path)[:15]
+        images = os.listdir(path)[1:15]
     else:
-        images = os.listdir(path)[:2000]
+        images = os.listdir(path)[1:]
     images_WithFeatures = []
     for index, imageName in tqdm(zip(range(len(images)), images), desc="Processing celebrity images"):
         im = cv2.resize(cv2.imread(path + "/" + imageName, 0), (128, 128))

@@ -2,10 +2,10 @@
 This file exists because iPython and jupyter is the actual worst
 '''
 import cv2 as cv2
-import matplotlib.pyplot as plt
-from pictureLogger import imageLogger
 import numpy as np
 import warnings
+
+from Assignment3.pictureLogger import imageLogger
 
 warnings.filterwarnings("ignore")
 
@@ -13,7 +13,7 @@ il = imageLogger()
 from tqdm import tqdm as tqdm
 
 DEBUG = True  # Smaller image and more logging
-WINDOW_SIZE = 10
+WINDOW_SIZE = 30
 
 
 def resizeImage(image, dbug=DEBUG):
@@ -275,7 +275,7 @@ def harrisCorners(im):
 
 def harrisCorns():
     # First thing to do is import the image
-    image = cv2.imread("./images/Rebecca1.jpg", 0)
+    image = cv2.imread("./images/chessBoard2.jpeg", 0)
     np.array(image, dtype=np.uint8)
 
     # then resize the image

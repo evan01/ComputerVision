@@ -1,13 +1,12 @@
 import cv2 as cv2
-import matplotlib.pyplot as plt
-from pictureLogger import imageLogger
 import numpy as np
 import warnings
+
+from Assignment3.pictureLogger import imageLogger
 
 warnings.filterwarnings("ignore")
 
 il = imageLogger()
-from tqdm import tqdm as tqdm
 
 DEBUG = True
 
