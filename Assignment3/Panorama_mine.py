@@ -6,7 +6,7 @@
 '''
     LIBRARIES
 '''
-from tqdm import trange
+from tqdm import tnrange
 from time import sleep
 import cv2
 from matplotlib import pyplot as plt
@@ -19,7 +19,8 @@ import numpy as np
 plt.rcParams['figure.figsize'] = (40.0, 20.0)
 
 class Panorama:
-    DEBUG = True
+    DEBUG = False
+    t = None
     FONT_SIZE = 50
     outputImages = []
     kp1 = []
@@ -29,6 +30,8 @@ class Panorama:
     matches = []
     homographyMatrix = []
     finalShape = (0, 0)
+    rightGaussianPyramid = []
+    leftGaussianPyramid = []
 
     leftLaplacianPyramid = []
     rightLaplacianPyramid = []
@@ -39,7 +42,7 @@ class Panorama:
         # image = cv2.resize(image, (120, 160))
         # image = cv2.resize(image, (1920, 2560))
         else:
-            image = cv2.resize(image, (1200, 600))
+            image = cv2.resize(image, (2400, 1200))
         return image
 
     def displayImage(self, img):
@@ -77,7 +80,7 @@ class Panorama:
         sz = image.shape
         newImg = np.zeros(sz, dtype=np.float32)
         # print ("Convoluding image with specified kernel" + str(kernel))
-        for i in trange(range(1, sz[0] - 1), desc="Convolution function"):
+        for i in tnrange(range(1, sz[0] - 1), desc="Convolution function"):
             for j in range(1, sz[1] - 1):
                 window = image[i - 1:i + 2, j - 1:j + 2]  # First get the points that make up our window
                 # Then convolve the kernel with these points
@@ -109,10 +112,13 @@ class Panorama:
 
     def getSiftMatches(self):
         sift_1, sift_2 = cv2.xfeatures2d.SIFT_create(), cv2.xfeatures2d.SIFT_create()
+        print("Finding the right image keypoints")
         self.kp1, self.des1 = sift_1.detectAndCompute(self.imL, None)
+        print("Finding the left image keypoints")
         self.kp2, self.des2 = sift_2.detectAndCompute(self.imR, None)
 
         # Then find the matches between the images
+        print("Finding matches between images")
         bf = cv2.BFMatcher()
         self.matches = bf.match(self.des1, self.des2)
 
@@ -120,16 +126,15 @@ class Panorama:
         bMatches = sorted(self.matches, key=lambda x: x.distance, reverse=False)[:20]
         newImBest = cv2.drawMatches(self.imL, self.kp1, self.imR, self.kp2, bMatches, None, flags=2)
         newImAll = cv2.drawMatches(self.imL, self.kp1, self.imR, self.kp2, self.matches, None, flags=2)
-        self.outputImages.append((newImBest, "20 best matches"))
-        self.outputImages.append((newImAll, "All the best matches"))
+        if self.DEBUG:
+            self.outputImages.append((newImBest, "20 best matches"))
+            self.outputImages.append((newImAll, "All the best matches"))
 
     def getPanoImages(self, pathL, pathR):
-        if self.DEBUG:
-            self.imL = self.resizeImage(cv2.imread(pathL))
-            self.imR = self.resizeImage(cv2.imread(pathR))
-        else:
-            self.imL = cv2.imread(pathL)
-            self.imR = cv2.imread(pathR)
+
+        self.imL = self.resizeImage(cv2.imread(pathL))
+        self.imR = self.resizeImage(cv2.imread(pathR))
+
         self.outputImages.append((self.imL, "Left Image"))
         self.outputImages.append((self.imR, "Right Image"))
 
@@ -172,21 +177,16 @@ class Panorama:
 
         for i in range(levels):
             # First get the left and right gaussian pyramid
-            if self.DEBUG:
-                # OpenCV implementationm, because my implementation is slower
-                left_gaussian = cv2.GaussianBlur(left, (5, 5), 0)
-                right_gaussian = cv2.GaussianBlur(right, (5, 5), 0)
-            else:
-                # My implementation
-                left_gaussian = self.gaussian_filter2(left)
-                right_gaussian = self.gaussian_filter2(right)
+
+            left_gaussian = cv2.GaussianBlur(left, (5, 5), 0)
+            right_gaussian = cv2.GaussianBlur(right, (5, 5), 0)
 
             # Log each image to the output
-            if self.DEBUG:
+            # if self.DEBUG:
                 # self.outputImages.append((left, "Left Pyramid Level: " + str(i)))
                 # self.outputImages.append((right, "Right Pyramid Level: " + str(i)))
-                self.outputImages.append((left_gaussian, "Left BLURRED/GAUS Pyramid Level: " + str(i)))
-                self.outputImages.append((right_gaussian, "Right BLURRED/GAUS Pyramid Level: " + str(i)))
+            # self.outputImages.append((left_gaussian, "Left BLURRED/GAUS Pyramid Level: " + str(i)))
+            # self.outputImages.append((right_gaussian, "Right BLURRED/GAUS Pyramid Level: " + str(i)))
 
             leftPyramid.append(left)
             rightPyramid.append(right)
@@ -197,6 +197,8 @@ class Panorama:
             left = cv2.resize(left, (0, 0), fx=0.5, fy=0.5)
             right = cv2.resize(right, (0, 0), fx=0.5, fy=0.5)
 
+        self.leftGaussianPyramid = leftGaussianPyramid
+        self.rightGaussianPyramid = rightGaussianPyramid
 
         # Then find the Gaussian pyramid on the weight image
         for i in range(levels - 1):
@@ -207,18 +209,13 @@ class Panorama:
             r_gaussNxtLvl = cv2.resize(rightGaussianPyramid[i + 1], (0, 0), fx=2, fy=2)
 
             # Then get the laplacian pyramid by subtracting the two images from one another
-            # lapLeft = l_gauss-l_gaussNxtLvl
-            # lapRight = r_gauss - r_gaussNxtLvl
             lapLeft = cv2.subtract(l_gauss, l_gaussNxtLvl)
             lapRight = cv2.subtract(r_gauss, r_gaussNxtLvl)
-
-            if self.DEBUG:
-                self.outputImages.append((lapLeft, "Laplacian Left level " + str(i)))
-                self.outputImages.append((lapRight, "Laplacian Right level " + str(i)))
 
             self.leftLaplacianPyramid.append(lapLeft)
             self.rightLaplacianPyramid.append(lapRight)
 
+        print "done"
     def combineLaplacianPyramids(self, levels=4):
         '''
         Blend Laplacians from each image using Gaussian blurred weights
@@ -227,15 +224,45 @@ class Panorama:
         The following code snippet (although modified) has been taken from:
         http://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_pyramids/py_pyramids.html
         '''
+        combinedLaplacian = []
+        combinedGaussian = []
+        for i in range(levels - 1)[::-1]:
+            # Stich the left and right laplacians together, AFTER getting them back
+            left_lap = self.leftLaplacianPyramid[i]
+            right_lap = self.rightLaplacianPyramid[i]
+            right_lap[0:left_lap.shape[0], 0:left_lap.shape[1]] = left_lap  # The combining part
+            combinedLaplacian.append(right_lap)
 
-        pass
-        # finalImage = cv2.add(im,cv2.resize(finalImage,(0,0),fx=2,fy=2))
+            # stich the left and right gaussians together
+            left_gaus = self.leftGaussianPyramid[i]
+            right_gaus = self.rightGaussianPyramid[i]
+            right_gaus[0:left_gaus.shape[0], 0:left_gaus.shape[1]] = left_gaus  # The combining part
+            combinedGaussian.append(right_gaus)
 
+        # Then add top level laplacian to level below it to get final image...
+        current_LAP = combinedLaplacian[0]
+        for i in range(1, levels - 1):
+            belowLAP = combinedLaplacian[i]
+            topLAP = cv2.resize(current_LAP, (0, 0), fx=2, fy=2)
+            current_LAP = cv2.add(belowLAP, topLAP)
+
+        panorama = cv2.add(current_LAP, combinedGaussian[-1])
+
+        self.outputImages.append((panorama, "Final Image???"))
 
     def warpImages(self):
         # First apply the warping function on the right image
+        # apply a perspective transform to stitch the images together
+        # using the cached homography matrix
+        # imageA = self.imR
+        # imageB = self.imL
+        # result = cv2.warpPerspective(imageA, self.homographyMatrix,
+        #                              (imageA.shape[1] + imageB.shape[1], imageA.shape[0]))
+        # result[0:imageB.shape[0], 0:imageB.shape[1]] = imageB
+        # self.outputImages.append((result,"STITCHED IMAGES"))
+
+
         self.rightWarped = cv2.warpPerspective(self.imR, self.homographyMatrix, self.finalShape)
-        self.outputImages.append((self.rightWarped, "Right Warped Image"))
 
     def finalStitch(self):
         # then place the right image on the left image
@@ -246,50 +273,51 @@ class Panorama:
         self.outputImages.append((self.panorama, "Final panorama"))
 
     def main(self):
-        t = trange(6, desc='Bar desc', leave=True)
+        self.t = tnrange(10, desc='Bar desc', leave=True)
         # t = tnrange(6, desc='Bar desc', leave=True)
 
         # First read the images as input
-        t.set_description("Reading the landscape images")
-        t.update(1)
+        self.t.set_description("Reading the landscape images")
+        self.t.update(1)
         self.getPanoImages("./images/landscapeL.jpg", "./images/landscapeR.jpg")
 
         # Then compute the sift descriptors and matches
-        t.set_description("Get sift features and calculate matches")
-        t.update(1)
+        self.t.set_description("Get sift features and calculate matches")
+        self.t.update(1)
         self.getSiftMatches()
 
         # Then get the homography matrix
-        t.set_description("Get homography matrix")
-        t.update(1)
+        self.t.set_description("Get homography matrix")
+        self.t.update(1)
         self.getHomographyMatrix()
 
         # Then get the final image details
-        t.set_description("Get final image details")
-        t.update(1)
+        self.t.set_description("Get final image details")
+        self.t.update(1)
         self.computePanoDetails()
 
         # Then do a warping transformation on the images using this matrix
-        t.set_description("Warping the right image onto the left image")
-        t.update(1)
+        self.t.set_description("Warping the right image onto the left image")
+        self.t.update(1)
         self.warpImages()
 
-        t.set_description("Applying the Laplacian blending of the image")
-        t.update(1)
+        self.t.set_description("Applying the Laplacian blending of the image")
+        self.t.update(1)
         self.createLaplacianPyramids()
 
-        t.set_description("Create the Gausian weight pyramid")
-        t.update(1)
+        self.t.set_description("Create the Gausian weight pyramid")
+        self.t.update(1)
         self.combineLaplacianPyramids()
 
-        t.set_description("Applying the ")
+        self.t.set_description("Applying the ")
 
         # Finally display all of the output images
-        t.set_description("Displaying the output images")
-        t.update(1)
+        self.t.set_description("Displaying the output images")
+        self.t.update(1)
         self.displayImages(self.outputImages)
 
 
+# $pylab
 # %matplotlib inline
 p = Panorama()
 p.main()
