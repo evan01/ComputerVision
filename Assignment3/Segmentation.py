@@ -51,14 +51,40 @@ class ColorFeature:
         self.bin = bin
 
 
+class IntensityFeature:
+    def __init__(self, x, y, intensity, bin):
+        self.x = x
+        self.y = y
+        self.its = intensity
+        self.bin = bin
+
+
+class kMeansCluster:
+    def __init__(self, id, mean):
+        self.mean = mean
+        self.id = id
+        self.sum = 0
+        self.elements = 0
+        self.oldMean = 0
+        self.color = [r.randint(0, 255), r.randint(0, 255), r.randint(0, 255)]
+
+    def computeMean(self):
+        self.oldMean = self.mean
+        self.mean = int(self.sum / self.elements)
+        self.elements = 0
+        self.sum = 0
+        return self
+
+
 class Segment:
-    DEBUG = False
+    DEBUG = True
     outputImages = []
     FONT_SIZE = 50
     MS_WINDOW_SIZE = 50
     GRAY_SHAPE = None
     CLR_SHAPE = None
     MS_COLOR_WINDOWS = None
+    kM_Clusters = None
 
     def resizeImage(self, image, dbug=DEBUG):
         print ("Resizing images")
@@ -75,6 +101,8 @@ class Segment:
     def displayImages(self, images):
         print("Displaying outs")
         for im in images:
+            if im[0] == None:
+                continue
             ima = im[0]
             if len(ima.shape) > 2:
                 ima = cv2.cvtColor(ima, cv2.COLOR_BGR2RGB)
@@ -94,12 +122,42 @@ class Segment:
         self.outputImages.append((im_gray, "Original Gray image"))
         return im_gray, im_clr
 
-    def kMeans(self, image, features, k):
-        # First create a cluster of size k
-        groups = [(i, j) for i, j in zip(range(k), range(k))]
+    def getClosestKMeansCluster(self, feature):
+        return np.argmin([abs(feature.its - i.mean) for i in self.kM_Clusters])
 
-        # then initialize the centroids with k random intensities
-        print "init centroids"
+    def kMeans_Intensity(self, features, k=6, maxIter=3):
+
+        # First create clusters of size k, with varying means
+        clusterAv = int(255 / k)
+        clusters = [kMeansCluster(i, i * clusterAv) for i in range(k)]
+        self.kM_Clusters = clusters
+
+        # Then begin the algorithm
+        iterations = 0
+        getClosest = np.vectorize(self.getClosestKMeansCluster)
+        while (iterations < maxIter):
+            print ("\tIteration " + str(iterations))
+            # For each average, get it's closest cluster and assign it
+            closest = getClosest(features)
+
+            # Update each cluster as well
+            for idx, bin in enumerate(closest):
+                clusters[bin].elements += 1
+                clusters[bin].sum += features[idx].its
+                features[idx].bin = bin
+
+            # Then for recompute the new means for each cluster
+            for idx, i in enumerate(clusters):
+                clusters[idx] = i.computeMean()
+
+            iterations += 1
+
+        # Done iterating, time to reconstruct the image
+        newIm = np.zeros(self.CLR_SHAPE, dtype=np.uint8)  # Color the output??
+        for i in features:
+            x, y = i.x, i.y
+            newIm[x][y] = clusters[i.bin].color
+        return newIm
 
     def gausMix(self, image, features, k):
         pass
@@ -129,18 +187,19 @@ class Segment:
             # First assign every feature a corresponding window
             for idx, i in enumerate(features):
                 # For each feature, get the intensity, and map that to a window
+                f = i
                 for win in range(numWindows):
-                    if not windows[win].locked and i[1] >= windows[win].lower and i[1] < windows[win].upper:
-                        # then assign the feature to the window
-                        windows[win].sum += i[1]
-                        windows[win].elements += 1
+                    if not windows[win].locked:
+                        if f.its >= windows[win].lower and f.its < windows[win].upper:
+                            # then assign the feature to the window
+                            windows[win].sum += f.its
+                            windows[win].elements += 1
 
-                        # also assign each feature to the proper window number
-                        features[idx] = (features[idx][0], features[idx][1], win)
-                        break
+                            # also assign each feature to the proper window number
+                            features[idx] = IntensityFeature(f.x, f.y, f.its, win)
+                            break
 
             # Then recompute the means of windows and 'shift' the window
-
             for i in range(numWindows):
                 if (windows[i].locked):
                     continue
@@ -171,11 +230,11 @@ class Segment:
             Now that we have our windows, and MS is over,
             we just need to recombine everything based on euclidean distance
         '''
+        # Done iterating, time to reconstruct the image
         newIm = np.zeros(self.CLR_SHAPE, dtype=np.uint8)  # Color the output??
         for i in features:
-            x, y = i[0][0], i[0][1]
-            color = windows[i[2]].color
-            newIm[x][y] = color
+            x, y = i.x, i.y
+            newIm[x][y] = windows[i.bin].color
         return newIm
 
     def euclideanDistance(self, a, b):
@@ -194,14 +253,11 @@ class Segment:
         to the given feature
         :return: the index of the window the feature belongs to
         """
-
-        colors = np.array([i.color for j, i in self.MS_COLOR_WINDOWS.iteritems()], dtype=object)
-        indexes = np.array([i.bin for j, i in self.MS_COLOR_WINDOWS.iteritems()], dtype=object)
-        dists = e(a=colors, b=feature.clr)
+        dists = e(a=self.colors, b=feature.clr)
         idx = np.argmin(dists)
-        return self.MS_COLOR_WINDOWS[indexes[idx]].bin  # Return the bin that the feature is closest to.
+        return self.MS_COLOR_WINDOWS[self.indexes[idx]].bin  # Return the bin that the feature is closest to.
 
-    def meanShift_Color(self, features, winSize=50, maxIter=3, windSimilarity=3):
+    def meanShift_Color(self, features, winSize=100, maxIter=3, windSimilarity=3):
         '''
         This is very much like the mean shift with intensity except you are shifting towards a color
         and not an intensity. Sadly color is a 3d space, so you are moving somewhere in space... somewhere
@@ -212,6 +268,7 @@ class Segment:
         :return:
         '''
         # First instantiate each window, which is a 3D space, needs a (r,g,b) corner coord to define its loc
+        print ("Creating Windows")
         combos = int(255 / winSize)  # The size of 1 side in the feature space
         combinations = []
         winHalf = int(winSize / 2)
@@ -228,6 +285,7 @@ class Segment:
             window = MS_WINDOW_COLOR(Color(av), idx)
             windows[idx] = window
 
+        print ("Begin the mean shift algorithm")
         # Then start the mean shift algorithm
         iterations = 0
         lockedWindows = 0
@@ -238,11 +296,13 @@ class Segment:
         closestC = np.vectorize(self.meanShift_ClosestWindow, excluded='euc', cache=True)
 
         while (iterations < maxIter):
-            print ("\tIteration " + str(iterations))
+            print ("\t\tIteration " + str(iterations))
             # Trim the old windows to only have the new ones
             # windows = [self.MS_COLOR_WINDOWS[i] for i in range(len(self.MS_COLOR_WINDOWS)) if self.MS_COLOR_WINDOWS[i] != None]
             windows = dict((k, v) for k, v in windows.iteritems() if v is not None)
             self.MS_COLOR_WINDOWS = windows
+            self.colors = np.array([i.color for j, i in self.MS_COLOR_WINDOWS.iteritems()], dtype=object)
+            self.indexes = np.array([i.bin for j, i in self.MS_COLOR_WINDOWS.iteritems()], dtype=object)
 
             # First assign every feature a corresponding window it's closest to using vec.functions
             closestWindows = closestC(features, e=euc)
@@ -314,7 +374,7 @@ class Segment:
 
         for i in range(len(im)):
             for j in range(len(im[i])):
-                intensityFeatures.append(((i, j), imGray[i][j], 0))  # todo create a class for int features
+                intensityFeatures.append(IntensityFeature(i, j, imGray[i][j], 0))
                 colorFeatures.append(ColorFeature(Color(im[i][j]), i, j, 0))
         if self.DEBUG:
             plt.hist(im.ravel(), 256, [0, 256]);
@@ -331,18 +391,22 @@ class Segment:
         :param features: A list of features, 1 for each x,y coordinate
         :return: the ms, kmeans and gaus images all segmented
         '''
+        ms_int, km_int, gaus_int = None, None, None
+
+
         # Do Mean Shift
         print "Mean shift with intensity features"
-        mS_intensity = self.meanShift_Intensity(features, self.MS_WINDOW_SIZE)
+        ms_int = self.meanShift_Intensity(features, self.MS_WINDOW_SIZE)
 
         # Do kmeans
+        print "K Means with intensity features"
+        km_int = self.kMeans_Intensity(features)
 
-        # Do gaus
+        return ms_int, km_int, gaus_int
 
-        return mS_intensity
 
     def colorSegmentation(self, features):
-        print "Mean shift with color features"
+        print "\tMean shift with color features"
         ms_Color = self.meanShift_Color(features)
 
         return ms_Color
@@ -362,14 +426,14 @@ class Segment:
         intensity_features, color_features = self.getFeatures(im_color, im_gray)
 
         # Then do the segmentations for the intensity features
-        # print "Run intensity segmentation algorithms"
-        # ms_int = self.intensitySegmentation(intensity_features)
-        # self.outputImages.append((ms_int,"Mean Shift Using Intensity Feature Space"))
+        print "Run intensity segmentation algorithms"
+        ms_int, km_int, gaus_int = self.intensitySegmentation(intensity_features)
+        self.outputImages.append((km_int, "K-Means Using Intensity Feature Space"))
 
         # Then do segmentations for the color features
-        print "Run color feature space algorithms"
-        ms_color = self.colorSegmentation(color_features)
-        self.outputImages.append((ms_color, "Mean Shift Using Color Feature Space"))
+        # print "Run color feature space algorithms"
+        # ms_color = self.colorSegmentation(color_features)
+        # self.outputImages.append((ms_color, "Mean Shift Using Color Feature Space"))
 
         # Display output images
         self.displayImages(self.outputImages)
