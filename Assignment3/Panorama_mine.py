@@ -6,17 +6,16 @@
 '''
     LIBRARIES
 '''
-from tqdm import tnrange
 from time import sleep
 import cv2
 from matplotlib import pyplot as plt
 import os
 import numpy as np
+
 '''
     MAGIC VARIABLES
 '''
 
-plt.rcParams['figure.figsize'] = (40.0, 20.0)
 
 class Panorama:
     DEBUG = False
@@ -80,7 +79,7 @@ class Panorama:
         sz = image.shape
         newImg = np.zeros(sz, dtype=np.float32)
         # print ("Convoluding image with specified kernel" + str(kernel))
-        for i in tnrange(range(1, sz[0] - 1), desc="Convolution function"):
+        for i in range(1, sz[0] - 1):
             for j in range(1, sz[1] - 1):
                 window = image[i - 1:i + 2, j - 1:j + 2]  # First get the points that make up our window
                 # Then convolve the kernel with these points
@@ -174,7 +173,6 @@ class Panorama:
         leftGaussianPyramid = []
         rightGaussianPyramid = []
 
-
         for i in range(levels):
             # First get the left and right gaussian pyramid
 
@@ -183,8 +181,8 @@ class Panorama:
 
             # Log each image to the output
             # if self.DEBUG:
-                # self.outputImages.append((left, "Left Pyramid Level: " + str(i)))
-                # self.outputImages.append((right, "Right Pyramid Level: " + str(i)))
+            # self.outputImages.append((left, "Left Pyramid Level: " + str(i)))
+            # self.outputImages.append((right, "Right Pyramid Level: " + str(i)))
             # self.outputImages.append((left_gaussian, "Left BLURRED/GAUS Pyramid Level: " + str(i)))
             # self.outputImages.append((right_gaussian, "Right BLURRED/GAUS Pyramid Level: " + str(i)))
 
@@ -215,7 +213,7 @@ class Panorama:
             self.leftLaplacianPyramid.append(lapLeft)
             self.rightLaplacianPyramid.append(lapRight)
 
-        print "done"
+
     def combineLaplacianPyramids(self, levels=4):
         '''
         Blend Laplacians from each image using Gaussian blurred weights
@@ -273,51 +271,42 @@ class Panorama:
         self.outputImages.append((self.panorama, "Final panorama"))
 
     def main(self):
-        self.t = tnrange(10, desc='Bar desc', leave=True)
-        # t = tnrange(6, desc='Bar desc', leave=True)
 
         # First read the images as input
-        self.t.set_description("Reading the landscape images")
-        self.t.update(1)
+        print("Reading the landscape images")
         self.getPanoImages("./images/landscapeL.jpg", "./images/landscapeR.jpg")
 
         # Then compute the sift descriptors and matches
-        self.t.set_description("Get sift features and calculate matches")
-        self.t.update(1)
+        print("Get sift features and calculate matches")
         self.getSiftMatches()
 
         # Then get the homography matrix
-        self.t.set_description("Get homography matrix")
-        self.t.update(1)
+        print("Get homography matrix")
         self.getHomographyMatrix()
 
         # Then get the final image details
-        self.t.set_description("Get final image details")
-        self.t.update(1)
+        print("Get final image details")
         self.computePanoDetails()
 
         # Then do a warping transformation on the images using this matrix
-        self.t.set_description("Warping the right image onto the left image")
-        self.t.update(1)
+        print("Warping the right image onto the left image")
         self.warpImages()
 
-        self.t.set_description("Applying the Laplacian blending of the image")
-        self.t.update(1)
+        print("Applying the Laplacian blending of the image")
         self.createLaplacianPyramids()
 
-        self.t.set_description("Create the Gausian weight pyramid")
-        self.t.update(1)
+        print("Create the Gausian weight pyramid")
+
         self.combineLaplacianPyramids()
 
-        self.t.set_description("Applying the ")
-
         # Finally display all of the output images
-        self.t.set_description("Displaying the output images")
-        self.t.update(1)
+        print("Displaying the output images")
+
         self.displayImages(self.outputImages)
 
 
 # $pylab
 # %matplotlib inline
+plt.rcParams['figure.figsize'] = (20, 60.0)
 p = Panorama()
 p.main()
