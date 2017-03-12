@@ -665,7 +665,7 @@ class Segment:
         '''
         # First get the images
         print ("Loading the images")
-        path = "./images/sarina.jpg"
+        path = "./images/bird.jpg"
         im_gray, im_color = self.getImages(path)
 
         # Then get the feature spaces for Intensity and RGB
