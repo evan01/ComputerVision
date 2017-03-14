@@ -7,4 +7,7 @@ Additionally, if the ipynb file does not work (it really should), the
  
  I tried to label the correct section of the code using the markdown headings so hopefully that works for you.
  
+ For my input image, the Kmeans algorithm with k=6 yielded the best results. This is using the RGB feature space.
+ 
+ 
  Thanks again and please email me at evan.knox@mail.mcgill.ca if you have any trouble getting this to work.
