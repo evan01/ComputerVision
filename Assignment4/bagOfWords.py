@@ -1,7 +1,9 @@
 import cv2
 from matplotlib import pyplot as plt
 import os
+from collections import defaultdict
 import numpy as np
+import itertools
 
 
 class bWords:
@@ -28,14 +30,39 @@ class bWords:
             plt.imshow(ima)
 
     def importImages(self, path):
-        for i in os.walk(path):
-            print i
+        # for each category, we need to get all the pictures associated with it
+        categories = [i[0] for i in os.walk(path)][1:]
+
+        # Create a dictionary where we have category as dict key, returning the array of related images
+        images = defaultdict()
+        for i in categories[int(len(categories) / 2):]:
+            imNames = [j[2] for j in os.walk(i + "/")][0]
+            importedImages = []
+            for image in imNames:
+                # import each image and categorize it
+                im = cv2.imread(i + "/" + image)
+                # Resize each image for your sanity
+                im = self.resizeImage(im)
+
+                # Compute the sift features for each image
+                s = cv2.xfeatures2d.SIFT_create()
+                sifts = s.detectAndCompute(im, None)
+
+                # Append imported images to list
+                imageAndFeatures = dict({'image': im, 'sift': sifts})
+                importedImages.append(imageAndFeatures)
+            category = i.rsplit('/', 1)[1]
+            images[category] = importedImages
+            print "\t importing: " + category
+
+        print categories
+
 
     def main(self):
         pathToImages = "./images/101_ObjectCategories"
 
         print "Importing the images"
-        self.importImages()
+        self.importImages(pathToImages)
 
 
 # $pylab
