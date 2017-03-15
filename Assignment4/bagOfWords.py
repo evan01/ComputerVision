@@ -6,8 +6,11 @@ import numpy as np
 import itertools
 
 
+
 class bWords:
     DEBUG = True
+    SKIPIMPORT = True  # Means to only import a minimal ammount of images
+    IMAGES = defaultdict()
 
     def resizeImage(self, image, dbug=DEBUG):
         if dbug:
@@ -32,15 +35,25 @@ class bWords:
     def importImages(self, path):
         # for each category, we need to get all the pictures associated with it
         categories = [i[0] for i in os.walk(path)][1:]
+        categories = categories[int(len(categories) / 2):]
+        cs = [i.rsplit('/', 1)[1] for i in categories]
 
         # Create a dictionary where we have category as dict key, returning the array of related images
-        images = defaultdict()
-        for i in categories[int(len(categories) / 2):]:
-            imNames = [j[2] for j in os.walk(i + "/")][0]
+        for i in range(len(categories)):
+            imNames = [j[2] for j in os.walk(categories[i] + "/")][0]
+            if self.SKIPIMPORT and len(imNames):
+                # No point importing ALL PICTURES when testing...
+                if (i % 2 == 0 or i % 5 == 0):
+                    continue
+                imNames = imNames[:1]
+
+            print ("\t importing: " + "(" + str(len(imNames)) + ") " + str(cs[i]) + ":"),
             importedImages = []
-            for image in imNames:
+            for idx, image in enumerate(imNames):
+                if (idx % 10 == 0):
+                    print ('.'),
                 # import each image and categorize it
-                im = cv2.imread(i + "/" + image)
+                im = cv2.imread(categories[i] + "/" + image)
                 # Resize each image for your sanity
                 im = self.resizeImage(im)
 
@@ -51,18 +64,19 @@ class bWords:
                 # Append imported images to list
                 imageAndFeatures = dict({'image': im, 'sift': sifts})
                 importedImages.append(imageAndFeatures)
-            category = i.rsplit('/', 1)[1]
-            images[category] = importedImages
-            print "\t importing: " + category
+            print ""
+            self.IMAGES[cs[i]] = importedImages
 
-        print categories
-
-
+    def kmeans(self):
+        pass
     def main(self):
         pathToImages = "./images/101_ObjectCategories"
 
         print "Importing the images"
         self.importImages(pathToImages)
+
+        print "For each image, run kmeans"
+        self.kmeans()
 
 
 # $pylab
