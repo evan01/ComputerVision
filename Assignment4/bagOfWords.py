@@ -4,13 +4,17 @@ import os
 from collections import defaultdict
 import numpy as np
 import itertools
+from scipy.cluster.vq import vq, kmeans2
+from random import shuffle
 
 
 
 class bWords:
     DEBUG = True
-    SKIPIMPORT = True  # Means to only import a minimal ammount of images
+    SKIPIMPORT = False  # Means to only import a minimal ammount of images
     IMAGES = defaultdict()
+    outImages = []
+    FONT_SIZE = 20
 
     def resizeImage(self, image, dbug=DEBUG):
         if dbug:
@@ -21,6 +25,10 @@ class bWords:
 
     def displayImage(self, img):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        plt.figure()
+        plt.title(img[1], fontsize=self.FONT_SIZE, fontweight='bold', color="green")
+        plt.imshow(img[0])
+
         plt.imshow(img)
 
     def displayImages(self, images):
@@ -45,7 +53,7 @@ class bWords:
                 # No point importing ALL PICTURES when testing...
                 if (i % 2 == 0 or i % 5 == 0):
                     continue
-                imNames = imNames[:1]
+                imNames = imNames[:2]
 
             print ("\t importing: " + "(" + str(len(imNames)) + ") " + str(cs[i]) + ":"),
             importedImages = []
@@ -59,28 +67,61 @@ class bWords:
 
                 # Compute the sift features for each image
                 s = cv2.xfeatures2d.SIFT_create()
-                sifts = s.detectAndCompute(im, None)
+                sifts = s.detectAndCompute(im, None)[1]
+
+                # Then run k means on the imported images features
+                try:
+                    kmCentroids, kmClusters = kmeans2(sifts, 50)
+                except Exception:
+                    continue
+                # Then create a histogram based off of each cluster
+                hist, bin_edges = np.histogram(kmClusters, 50, normed=True)
+
+                # #Normalize the histogram
+                # hist = hist/50
 
                 # Append imported images to list
-                imageAndFeatures = dict({'image': im, 'sift': sifts})
+                imageAndFeatures = dict({'image': im, 'hist': hist, 'bin_edges': bin_edges})
                 importedImages.append(imageAndFeatures)
             print ""
             self.IMAGES[cs[i]] = importedImages
 
-    def kmeans(self):
-        pass
     def main(self):
         pathToImages = "./images/101_ObjectCategories"
 
-        print "Importing the images"
+        print "Importing the images and run the kmeans algorithm"
         self.importImages(pathToImages)
 
-        print "For each image, run kmeans"
-        self.kmeans()
+        print "displaying images"
+        # pick 2 random categories
+        categories = [i for i in self.IMAGES]
+        shuffle(categories)
+        categories = categories[3:5]
+
+        for i in categories:
+            ims = self.IMAGES[i]
+            ims = ims[:5]
+            for image in ims:
+                # first get the raw image and histogram data
+                img, hist, bin_edges = image['image'], image['hist'], image['bin_edges']
+                # plot the raw image
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                plt.figure()
+                plt.title("Image of Category: " + str(i), fontsize=self.FONT_SIZE, fontweight='bold', color="green")
+                plt.imshow(img)
+
+                # Then plot the histogram
+                fig, ax = plt.subplots()
+                ax.bar(range(50), hist, width=0.8, color='r')
+                plt.title("Histogram of Image: " + str(i), fontsize=self.FONT_SIZE, fontweight='bold', color="green")
+                plt.show()
+                # plt.savefig("./images/histograms/temp.png")
+
+        print "done"
 
 
-# $pylab
+# %pylab
 # %matplotlib inline
-plt.rcParams['figure.figsize'] = (20, 60.0)
+plt.rcParams['figure.figsize'] = (20, 20.0)
 b = bWords()
 b.main()
