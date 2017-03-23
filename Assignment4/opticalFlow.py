@@ -2,6 +2,7 @@ import cv2
 from matplotlib import pyplot as plt
 from collections import defaultdict
 import numpy as np
+import math
 
 
 class opticalFlow:
@@ -10,7 +11,7 @@ class opticalFlow:
     IMAGES = defaultdict()
     outImages = []
     FONT_SIZE = 20
-    WINDOW_SIZE = 7
+    WINDOW_SIZE = 45
 
     def resizeImage(self, image, dbug=DEBUG):
         if dbug:
@@ -40,75 +41,6 @@ class opticalFlow:
             plt.imshow(ima)
 
     def opticalFlow(self, im1_x, im1_y, im_dt):
-        # First create the matrix of vectors that we want to compute
-        shp = im1_x.shape
-        FLOW = np.zeros((shp[0], shp[1], 2))
-
-        ##Then for every pixel in the image, compute the matrix A * transA, ASSUME WIND of width and height = 3
-        print "Computing Flow: ",
-        for i in range(1, shp[0] - 1):
-            # if (i % 50 == 0):
-            #     print ('.'),
-            for j in range(1, shp[1] - 1):
-
-                # First, it's not worth computing anything unless there is a dif in pixel values in the window
-                # Could have used the whole window, but maybe this is a good speedup
-                It = im_dt[i - 1:i + 2, j - 1:j + 2].flatten()
-                if It.max() == 0:
-                    continue
-
-                # First get the dx and dy pixel values in the window
-                Ix = im1_x[i - 1:i + 2, j - 1:j + 2].flatten()
-                Iy = im1_y[i - 1:i + 2, j - 1:j + 2].flatten()
-
-                # Another speedup here
-                mX, mY = Ix.max(), Iy.max()
-                if mX == 0 and mY == 0:
-                    continue
-
-                # Then get the sum of the products of these values as per the equation
-                # Build the Atranspose A matrix
-                Ixx = [0] * 9
-                Ixy = [0] * 9
-                Iyy = [0] * 9
-                Ixt = [0] * 9
-                Iyt = [0] * 9
-                for idx in range(9):
-                    Ixy[idx] = Ix[idx] * Iy[idx]
-                    Ixx[idx] = Ix[idx] * Ix[idx]
-                    Iyy[idx] = Iy[idx] * Iy[idx]
-                    Ixt[idx] = Ix[idx] * It[idx]
-                    Iyt[idx] = Iy[idx] * It[idx]
-
-                # then compute the sums
-                Ixy = sum(Ixy)
-                Ixx = sum(Ixx)
-                Iyy = sum(Iyy)
-                Ixt = sum(Ixt)
-                Iyt = sum(Iyt)
-
-                # Then create the matrix ATA, and the
-                A = np.array([[Ixx, Ixy], [Ixy, Iyy]])
-                B = np.array([Ixt, Iyt])
-                B = -B
-
-                # Check to see if the matrix is invertible,and the eigenvals aren't too small
-                eigenvals = np.array(np.linalg.eigvals(A), dtype=np.uint8)
-                invertible = not np.any(eigenvals == 0)
-                if invertible and abs(eigenvals[0]) > 1 and abs(eigenvals[1]) > 1 and eigenvals[0] > eigenvals[1]:
-                    # Then we can invert the matrix, solve the system
-                    A_Inv = np.linalg.inv(A)
-
-                    # Then multiply the inverse to the left hand side of least squares equation to get flow vector
-                    Flow = [int(A_Inv[0][0] * B[0] + A_Inv[1][0] * B[0]), int(A_Inv[0][1] * B[1] + A_Inv[1][1] * B[1])]
-
-                    # if self.DEBUG:
-                    #     print "Flow: " + str(Flow) + " Eigs: "+ str(eigenvals )+ " (" +str(i)+ ","+str(j)+")"
-                    FLOW[i][j] = Flow
-
-        return FLOW
-
-    def opticalFlow2(self, im1_x, im1_y, im_dt):
         """
         This is the second implementation of optical flow with variable window sizes
         :param im1_x:
@@ -116,37 +48,61 @@ class opticalFlow:
         :param im_dt:
         :return:
         """
-        d = int(self.WINDOW_SIZE / 2)  # So we can dynamically have varying sizes of windows
+        # First create the matrix of flow vectors that we want to compute
+        # Assume that each pixel has no flow to start with
         shp = im1_x.shape
+        FLOW = np.zeros((shp[0], shp[1], 2))
+
+        # Then start doing the optical flow,
+        # todo, use multithreading if time to speed this up...
+        d = int(self.WINDOW_SIZE / 2)  # So we can dynamically have varying sizes of windows
         prog = shp[0] / 10  # So we can have a 10% progress bar as we compute the values
         print ("Optical Flow: "),
         for i in range(d, shp[0] - d):
             if i % prog == 0:
-                print ".",
+                print str(i / prog) + "0% ",
             for j in range(d, shp[0] - d):
                 # First get all the values within the windows to build column vectors
                 # If there is no change between two windows then carry on
                 dt = im_dt[i - d:i + d + 1, j - d:j + d + 1].flatten()
-                if (dt.sum() == 0):
+                if (dt.sum() == 0):  #Speedup #1
                     continue
                 dx = im1_x[i - d:i + d + 1, j - d:j + d + 1].flatten()
                 dy = im1_y[i - d:i + d + 1, j - d:j + d + 1].flatten()
 
-                if (dx.sum() == 0 and dy.sum() == 0):
+                if (dx.sum() == 0 and dy.sum() == 0):  #Speedup #2
                     continue
 
                 # then construct the matrices of interest A and A.T
-                A_trans = np.array([dx, dy])
+                A_trans = np.matrix([dx, dy])
                 A = A_trans.T
-                dt = np.array(dt).T
+                dt = np.matrix(dt).T
 
                 # Find Atrans*A and Atrans*T
                 M = np.matmul(A_trans, A)
                 T = np.matmul(A_trans, dt)
 
-                # Then find the eigenvals of M
+                # Another speedup #3
+                if np.all(T == 0):
+                    continue
+
+                # Then find the eigenvals of M, check whether matrix is invertible or not
                 eigenvals = np.array(np.linalg.eigvals(M))
-                print "k"
+                invertible = True
+                for eig in eigenvals:
+                    if math.fabs(eig) < .2:
+                        invertible = False
+                if not invertible:
+                    continue
+
+                # Then get the inverse of M
+                M_inv = M.I
+                # Multiply this inverse to T to get the u, v vectors we are interested in
+                flow = np.array(np.matmul(M_inv, T))
+                f1, f2 = flow[0][0], flow[1][0]
+                FLOW[i][j][0] = f1
+                FLOW[i][j][1] = f2
+        return FLOW
 
     def placeVectorsOnImage(self, flow, image):
 
@@ -155,14 +111,25 @@ class opticalFlow:
         for i in range(1, shp[0], 10):
             for j in range(1, shp[1], 10):
                 # Get the arrow vector
-                u, v = int(flow[i][j][0]), int(flow[i][j][1])
+                u, v = flow[i][j][0], flow[i][j][1]
 
                 # Draw the arrow vector
+                u = int(u)
+                v = int(v)
+
+                # Some of the values that we get are odd... must be a float conversion problem
+                if (u < 10 and v == 10):
+                    continue
+
+                # Small error?
+                if (u > 254 or v > 254):
+                    continue
+
                 pt1 = (i, j)
                 pt2 = (i + v, j + u)
 
-                if self.DEBUG:
-                    print "u: " + str(u) + " v: " + str(v) + " (" + str(i) + "," + str(j) + ")"
+                # if self.DEBUG:
+                #     print "u: " + str(u) + " v: " + str(v) + " (" + str(i) + "," + str(j) + ")"
 
                 image = cv2.arrowedLine(image, pt1, pt2, (0, 0, 255), 2)
 
@@ -192,8 +159,7 @@ class opticalFlow:
         I_dt = np.subtract(im2, im1)
 
         # Then compute the optical flow
-        # flow = self.opticalFlow(im1_x, im1_y, I_dt)
-        flow = self.opticalFlow2(im1_x, im1_y,I_dt)
+        flow = self.opticalFlow(im1_x, im1_y,I_dt)
 
         # Then overlay flow vectors on the original image
         vectoredImage = self.placeVectorsOnImage(flow, im1_clr.copy())
